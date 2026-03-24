@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devops-cicd-project
+  namespace: default
+  labels:
+    app: devops-cicd-project
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: devops-cicd-project
+  strategy: 
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: devops-cicd-project
+    spec:
+      containers:
+      - name: devops-cicd-project
+        image: devops-cicd-project:1.0.0
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 5000
+        env:
+        - name: APP_ENV
+          value: "production"
+        - name: APP_VERSION
+          value: "1.0.0"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          failureThreshold: 3
+        livenessProbe: 
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          failureThreshold: 3

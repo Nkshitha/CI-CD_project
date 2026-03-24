@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata: 
+  name: devops-cicd-project
+  namespace: default
+data:
+  APP_ENV: "production"
+  LOG_LEVEL: "INFO"
+  APP_NAME: "devops-cicd-project"
