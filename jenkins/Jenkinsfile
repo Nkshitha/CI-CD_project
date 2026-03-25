@@ -21,8 +21,9 @@ pipeline {
             steps {
                 echo "Running unit tests..."
                 sh '''
-                    pip3 install flask pytest \
-                        --break-system-packages -q
+                    pip3 install flask pytest -q \
+                        --ignore-installed \
+                        || pip install flask pytest -q
                     python3 -m pytest tests/ -v \
                         --tb=short
                 '''
