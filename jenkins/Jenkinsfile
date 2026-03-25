@@ -1,145 +1,149 @@
 pipeline {
-	agent any
-	environment {
-		APP_NAME = "devops-cicd-project"
-		IMAGE_TAG = "${env.BUILD_NUMBER}"
-		KUBE_NS = "default"
-	}
-	stages {
-		stage {'Checkout') {
-			steps {
-				echo 'Checking out code from Github..."
-				checkout scm
-				sh 'git log -1 --format="%H %s %an"'
-			}
-		}
-		stage('Run Tests') {
-			steps {
-				echo 'Running unit tests..."
-				sh '''
-					pip3 install flask pytest \
-						--break-system-packages -q
-					python3 -m pytest tests/ -v \
-						--tb=short
-				'''
-			}
-			post {
-				failure {
-					echo "Tests failed - stopping pipeline"
-				}
-			}
-		}
-		stage('Build Docker Image') {
-			steps {
-				echo 'Building Docker image..')
-				sh '''
-					docker build \
-						-t ${APP_NAMME}:${IMAGE_TAG} \
-						-t ${APP_NAME}:latest \
-						.
-					docker images | grep ${APP_NAME}
-				'''
-				}
-			}
-		stage('Load Image to Minikube'){
-			steps {
-				echo "Loading image into Minikube"
-				sh '''
-					minikube image load ${APP_NAME}:${IMAGE_TAG}
-					minikube image load ${APP_NAME}:latest
-					minikube image ls | grep ${APP_NAME}
-				'''
-			}
-		}
-		stage('Deploy to Kubernetes' {
-			steps {
-				echo "Deploying to Kubernetes..."
-				sh '''
-					# Update image tag in deployment
-					kubectl set image \
-						deployment/${APP_NAME} \
-						${APP_NAME}=${APP_NAME}:${IMAGE_TAG} \
-						-n ${KUBE_NS} \
-						
-				# Wait for Rollout
-				kubectl rollout status \
-					deployment/${APP_NAME} \
-					-n ${KUBE_NS}
-					--timeout=120s
-				'''
-			}
-		}
-		stage('Verify Deployment')
-			steps {
-				echo "Verifying Deployment..."
-				sh '''
-					# Check pods are running
-					kubectl get pods \
-						-n ${KUBE_NS} \
-						-l app=${APP_NAME}
-					
-					# Get running pod count
-					RUNNING=$(kubectl get pods \
-						-n ${KUBE_NS} \
-						-l app=${APP_NAME} \
-						--field-selector=status.phase=Running \
-						--no-headers | wc -l)
-				
-					echo "RUnning pods: ${RUNNING}"
+    agent any
 
-					if [ "${RUNNING}" -lt 1 ]; then
-						echo "No running pods found"
-						exit 1
-					fi
-			
-					#Test health endpoint
-					SERVICE_URL=$(minikube service \
-						${APP_NAME} --url)
-					HTTP_CODE=${curl -s -o /dev/null \
-						-w "%{http_code}" \
-						${SERVICE_URL}/health)
+    environment {
+        APP_NAME  = "devops-cicd-project"
+        IMAGE_TAG = "${env.BUILD_NUMBER}"
+        KUBE_NS   = "default"
+    }
 
-					echo "Health check HTTP code: ${HTTP_CODE}"
+    stages {
 
-                    			if [ "${HTTP_CODE}" != "200" ]; then
-                        			echo "Health check failed"
-                        			exit 1
-                    			fi
+        stage('Checkout') {
+            steps {
+                echo "Checking out code from GitHub..."
+                checkout scm
+                sh 'git log -1 --format="%H %s %an"'
+            }
+        }
 
-                    			echo "Deployment verified successfully"
-				'''
-			}
-		}
-	}
-	post {
-		success {
-            		echo """
-            		════════════════════════════════
-            		✅ Pipeline succeeded
-            		App: ${env.APP_NAME}
-            		Build: ${env.BUILD_NUMBER}
-            		════════════════════════════════
-            		"""
-        	}
-        	failure {
-            		echo """
-           	 	════════════════════════════════
-           		❌ Pipeline failed
-           		App: ${env.APP_NAME}
-           		Build: ${env.BUILD_NUMBER}
-           		Check logs above for details
-           		════════════════════════════════
-           		"""
-            		sh '''
-                		kubectl rollout undo \
-                			deployment/${APP_NAME} \
-                			-n ${KUBE_NS} || true
-            		'''
-        	}
-        	always {
-            		echo "Cleaning up dangling Docker images..."
-            		sh 'docker image prune -f || true'
-       		}
-	}
+        stage('Run Tests') {
+            steps {
+                echo "Running unit tests..."
+                sh '''
+                    pip3 install flask pytest \
+                        --break-system-packages -q
+                    python3 -m pytest tests/ -v \
+                        --tb=short
+                '''
+            }
+            post {
+                failure {
+                    echo "Tests failed - stopping pipeline"
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                echo "Building Docker image..."
+                sh '''
+                    docker build \
+                        -t ${APP_NAME}:${IMAGE_TAG} \
+                        -t ${APP_NAME}:latest \
+                        .
+                    docker images | grep ${APP_NAME}
+                '''
+            }
+        }
+
+        stage('Load Image to Minikube') {
+            steps {
+                echo "Loading image into Minikube..."
+                sh '''
+                    minikube image load ${APP_NAME}:${IMAGE_TAG}
+                    minikube image load ${APP_NAME}:latest
+                    minikube image ls | grep ${APP_NAME}
+                '''
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                echo "Deploying to Kubernetes..."
+                sh '''
+                    kubectl set image \
+                        deployment/${APP_NAME} \
+                        ${APP_NAME}=${APP_NAME}:${IMAGE_TAG} \
+                        -n ${KUBE_NS}
+
+                    kubectl rollout status \
+                        deployment/${APP_NAME} \
+                        -n ${KUBE_NS} \
+                        --timeout=120s
+                '''
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                echo "Verifying Deployment..."
+                sh '''
+                    kubectl get pods \
+                        -n ${KUBE_NS} \
+                        -l app=${APP_NAME}
+
+                    RUNNING=$(kubectl get pods \
+                        -n ${KUBE_NS} \
+                        -l app=${APP_NAME} \
+                        --field-selector=status.phase=Running \
+                        --no-headers | wc -l)
+
+                    echo "Running pods: ${RUNNING}"
+
+                    if [ "${RUNNING}" -lt 1 ]; then
+                        echo "No running pods found"
+                        exit 1
+                    fi
+
+                    SERVICE_URL=$(minikube service \
+                        ${APP_NAME} --url)
+
+                    HTTP_CODE=$(curl -s -o /dev/null \
+                        -w "%{http_code}" \
+                        ${SERVICE_URL}/health)
+
+                    echo "Health check HTTP code: ${HTTP_CODE}"
+
+                    if [ "${HTTP_CODE}" != "200" ]; then
+                        echo "Health check failed"
+                        exit 1
+                    fi
+
+                    echo "Deployment verified successfully"
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo """
+            ════════════════════════════════
+            ✅ Pipeline succeeded
+            App: ${env.APP_NAME}
+            Build: ${env.BUILD_NUMBER}
+            ════════════════════════════════
+            """
+        }
+        failure {
+            echo """
+            ════════════════════════════════
+            ❌ Pipeline failed
+            App: ${env.APP_NAME}
+            Build: ${env.BUILD_NUMBER}
+            Check logs above for details
+            ════════════════════════════════
+            """
+            sh '''
+                kubectl rollout undo \
+                    deployment/${APP_NAME} \
+                    -n ${KUBE_NS} || true
+            '''
+        }
+        always {
+            echo "Cleaning up dangling Docker images..."
+            sh 'docker image prune -f || true'
+        }
+    }
 }
-EOF
