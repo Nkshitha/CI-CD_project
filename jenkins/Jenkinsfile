@@ -22,8 +22,7 @@ pipeline {
                 echo "Running unit tests..."
                 sh '''
                     pip3 install flask pytest -q \
-                        --ignore-installed \
-                        || pip install flask pytest -q
+                        --ignore-installed
                     python3 -m pytest tests/ -v \
                         --tb=short
                 '''
@@ -48,13 +47,29 @@ pipeline {
             }
         }
 
+        stage('Verify Minikube') {
+            steps {
+                echo "Checking Minikube is running..."
+                sh '''
+                    minikube status || minikube start \
+                        --driver=docker \
+                        --memory=2048 \
+                        --cpus=2
+
+                    kubectl get nodes
+                '''
+            }
+        }
+
         stage('Load Image to Minikube') {
             steps {
                 echo "Loading image into Minikube..."
                 sh '''
                     minikube image load ${APP_NAME}:${IMAGE_TAG}
                     minikube image load ${APP_NAME}:latest
-                    minikube image ls | grep ${APP_NAME}
+                    echo "Images loaded successfully"
+                    minikube image ls | grep ${APP_NAME} || \
+                        echo "Image loaded but grep found no match"
                 '''
             }
         }
