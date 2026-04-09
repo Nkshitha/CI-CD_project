@@ -2,9 +2,12 @@ pipeline {
     agent any
 
     environment {
-        APP_NAME  = "devops-cicd-project"
-        IMAGE_TAG = "${env.BUILD_NUMBER}"
-        KUBE_NS   = "default"
+        APP_NAME        = "devops-cicd-project"
+        IMAGE_TAG       = "${env.BUILD_NUMBER}"
+        KUBE_NS         = "default"
+        DOCKER_TLS_VERIFY = "1"
+        DOCKER_HOST     = "tcp://192.168.49.2:2376"
+        DOCKER_CERT_PATH = "/var/lib/jenkins/.minikube/docker-certs"
     }
 
     stages {
@@ -38,10 +41,6 @@ pipeline {
             steps {
                 echo "Checking Minikube is running..."
                 sh '''
-                    minikube status || minikube start \
-                        --driver=docker \
-                        --memory=2048 \
-                        --cpus=2
                     kubectl get nodes
                 '''
             }
@@ -51,16 +50,10 @@ pipeline {
             steps {
                 echo "Building Docker image inside Minikube..."
                 sh '''
-                    # Point Docker to Minikube registry
-                    eval $(minikube docker-env)
-
-                    # Build image directly in Minikube
                     docker build \
                         -t ${APP_NAME}:${IMAGE_TAG} \
                         -t ${APP_NAME}:latest \
                         .
-
-                    # Verify image exists
                     docker images | grep ${APP_NAME}
                 '''
             }
@@ -151,10 +144,7 @@ pipeline {
         }
         always {
             echo "Cleaning up dangling Docker images..."
-            sh '''
-                eval $(minikube docker-env) && \
-                docker image prune -f || true
-            '''
+            sh 'docker image prune -f || true'
         }
     }
 }
