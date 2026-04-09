@@ -34,19 +34,6 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
-            steps {
-                echo "Building Docker image..."
-                sh '''
-                    docker build \
-                        -t ${APP_NAME}:${IMAGE_TAG} \
-                        -t ${APP_NAME}:latest \
-                        .
-                    docker images | grep ${APP_NAME}
-                '''
-            }
-        }
-
         stage('Verify Minikube') {
             steps {
                 echo "Checking Minikube is running..."
@@ -55,21 +42,26 @@ pipeline {
                         --driver=docker \
                         --memory=2048 \
                         --cpus=2
-
                     kubectl get nodes
                 '''
             }
         }
 
-        stage('Load Image to Minikube') {
+        stage('Build Docker Image') {
             steps {
-                echo "Loading image into Minikube..."
+                echo "Building Docker image inside Minikube..."
                 sh '''
-                    minikube image load ${APP_NAME}:${IMAGE_TAG}
-                    minikube image load ${APP_NAME}:latest
-                    echo "Images loaded successfully"
-                    minikube image ls | grep ${APP_NAME} || \
-                        echo "Image loaded but grep found no match"
+                    # Point Docker to Minikube registry
+                    eval $(minikube docker-env)
+
+                    # Build image directly in Minikube
+                    docker build \
+                        -t ${APP_NAME}:${IMAGE_TAG} \
+                        -t ${APP_NAME}:latest \
+                        .
+
+                    # Verify image exists
+                    docker images | grep ${APP_NAME}
                 '''
             }
         }
@@ -159,7 +151,10 @@ pipeline {
         }
         always {
             echo "Cleaning up dangling Docker images..."
-            sh 'docker image prune -f || true'
+            sh '''
+                eval $(minikube docker-env) && \
+                docker image prune -f || true
+            '''
         }
     }
 }
